@@ -230,13 +230,7 @@
     },
     "plugins/pstack/skills/show-me-your-work/SKILL.md": {
       "kind": "policy",
-      "why": "Documents that log.sh also neutralizes a cell opening with a double quote.",
-      "since": "0.9.41",
-      "upstream": "not-proposed"
-    },
-    "plugins/pstack/skills/show-me-your-work/scripts/log.sh": {
-      "kind": "policy",
-      "why": "Prefixes a cell opening with a double quote so a spreadsheet or TSV reader cannot parse it as a quoted field.",
+      "why": "Documents quote-prefix sanitization and invokes the portable Node log helper.",
       "since": "0.9.41",
       "upstream": "not-proposed"
     },

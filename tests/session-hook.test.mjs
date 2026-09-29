@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { agentSkills } from "../tools/generate.mjs";
+import { agentSkills, validateHooks } from "../tools/generate.mjs";
 
 const pluginRoot = fileURLToPath(new URL("../plugins/pstack/", import.meta.url));
 const mandate = readFileSync(join(pluginRoot, "hooks/session-start-context.md"), "utf8");
@@ -41,7 +41,7 @@ const runtimes = {
 };
 
 function runHook(runtime, sheet, command = sessionStart[runtimes[runtime].hooks].hooks[0].command) {
-  const home = mkdtempSync(join(tmpdir(), "pstack-hook-"));
+  const home = mkdtempSync(join(tmpdir(), "pstack hook "));
   const { sheetDir, env } = runtimes[runtime];
   const sheetRoot = join(home, sheetDir);
   if (sheet !== null) {
@@ -49,10 +49,14 @@ function runHook(runtime, sheet, command = sessionStart[runtimes[runtime].hooks]
     writeFileSync(join(sheetRoot, "pstack-models.md"), sheet);
   }
   try {
-    const r = spawnSync("sh", ["-c", command], {
-      env: { PATH: process.env.PATH, HOME: home, CLAUDE_PLUGIN_ROOT: pluginRoot, ...env(sheetRoot) },
+    // Expand the plugin placeholder before invoking the platform's command shell.
+    const r = spawnSync(command.replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot), {
+      shell: true,
+      env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: "", CLAUDE_CONFIG_DIR: "",
+        CLAUDE_PLUGIN_ROOT: pluginRoot, ...env(sheetRoot) },
       encoding: "utf8",
     });
+    if (r.error) throw r.error;
     return { status: r.status, out: r.stdout, err: r.stderr };
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -60,6 +64,17 @@ function runHook(runtime, sheet, command = sessionStart[runtimes[runtime].hooks]
 }
 
 describe("SessionStart hook", () => {
+  test("both shipped commands invoke Node and need no executable bit on the script", () => {
+    for (const runtime of ["claude", "codex"]) {
+      const command = sessionStart[runtime].hooks[0].command;
+      expect(command).toBe(`node "\${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs" ${runtime}`);
+      const hooks = JSON.stringify({ hooks: { SessionStart: [sessionStart[runtime]] } });
+      const statOf = (rel) => rel === "hooks/session-start.mjs" ? { mode: 0o644 } : null;
+      expect(() => validateHooks(hooks, { statOf })).not.toThrow();
+      expect(() => validateHooks(hooks, { statOf: () => null })).toThrow("hooks/session-start.mjs does not exist");
+    }
+  });
+
   // The manifest names Codex's own hooks file instead of relying on Codex's
   // default discovery; `resume` keeps the mandate present after a restart.
   test("declares the hook in the Codex manifest", () => {
@@ -77,10 +92,10 @@ describe("SessionStart hook", () => {
 
   for (const arg of ["cursor", ""]) {
     test(`fails on runtime argument ${JSON.stringify(arg)}`, () => {
-      const r = runHook("claude", null, `"\${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh" ${arg}`);
+      const r = runHook("claude", null, `node "\${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs" ${arg}`);
       expect(r.status).not.toBe(0);
       expect(r.out).toBe("");
-      expect(r.err.trimEnd().split("\n")).toEqual([`session-start.sh: unknown runtime '${arg}' (expected claude or codex)`]);
+      expect(r.err.trimEnd().split("\n")).toEqual([`session-start.mjs: unknown runtime '${arg}' (expected claude or codex)`]);
     });
   }
 
