@@ -15,7 +15,8 @@
         "docs/",
         "plugin.json",
         "skills/make-bot-ui/",
-        "skills/poteto-mode/scripts/worktree-audit.sh"
+        "skills/poteto-mode/scripts/worktree-audit.sh",
+        "skills/show-me-your-work/scripts/log.sh"
       ]
     },
     "cursor-team-kit": {

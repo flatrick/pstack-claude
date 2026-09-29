@@ -959,13 +959,13 @@ describe("plan, changes, apply", () => {
     const root = repoCopy();
     const hooks = "plugins/pstack/hooks/hooks.json";
     const text = readFileSync(join(root, hooks), "utf8");
-    writeFileSync(join(root, hooks), text.replace("hooks/session-start.sh", "../../tools/generate.mjs"));
+    writeFileSync(join(root, hooks), text.replace("hooks/session-start.mjs", "../../tools/generate.mjs"));
     expect(problems(root)).toEqual([expect.stringContaining("../../tools/generate.mjs does not exist in the plugin")]);
-    const outside = join(scratch("pstack-outside-"), "start.sh");
-    writeFileSync(outside, "#!/bin/sh\n", { mode: 0o755 });
-    symlinkSync(outside, join(root, "plugins/pstack/hooks/linked.sh"));
-    writeFileSync(join(root, hooks), text.replace("hooks/session-start.sh", "hooks/linked.sh"));
-    expect(problems(root)).toEqual([expect.stringContaining("hooks/linked.sh does not exist in the plugin")]);
+    const outside = join(scratch("pstack-outside-"), "start.mjs");
+    writeFileSync(outside, "// outside the plugin\n");
+    symlinkSync(outside, join(root, "plugins/pstack/hooks/linked.mjs"));
+    writeFileSync(join(root, hooks), text.replace("hooks/session-start.mjs", "hooks/linked.mjs"));
+    expect(problems(root)).toEqual([expect.stringContaining("hooks/linked.mjs does not exist in the plugin")]);
   });
 
   test("problems reports a root with no plugin directory, down to the last check, and does not throw", () => {

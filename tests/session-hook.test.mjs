@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { agentSkills } from "../tools/generate.mjs";
+import { agentSkills, validateHooks } from "../tools/generate.mjs";
 import { sheetCases, writeSheet } from "./session-hook-sheets.mjs";
 
 const pluginRoot = fileURLToPath(new URL("../plugins/pstack/", import.meta.url));
@@ -53,7 +53,7 @@ const runtimes = {
 };
 
 function runHook(runtime, sheet, command = sessionStart[runtimes[runtime].hooks].hooks[0].command) {
-  const home = mkdtempSync(join(tmpdir(), "pstack-hook-"));
+  const home = mkdtempSync(join(tmpdir(), "pstack hook "));
   const { sheetDir, env } = runtimes[runtime];
   const sheetRoot = join(home, sheetDir);
   if (sheet !== null) {
@@ -61,10 +61,14 @@ function runHook(runtime, sheet, command = sessionStart[runtimes[runtime].hooks]
     writeSheet(join(sheetRoot, "pstack-models.md"), sheet);
   }
   try {
-    const r = spawnSync("sh", ["-c", command], {
-      env: { PATH: process.env.PATH, HOME: home, CLAUDE_PLUGIN_ROOT: pluginRoot, ...env(sheetRoot) },
+    // Expand the plugin placeholder before invoking the platform's command shell.
+    const r = spawnSync(command.replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot).replaceAll("${COPILOT_PLUGIN_ROOT}", pluginRoot), {
+      shell: true,
+      env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: "", CLAUDE_CONFIG_DIR: "", COPILOT_HOME: "",
+        CLAUDE_PLUGIN_ROOT: pluginRoot, ...env(sheetRoot) },
       encoding: "utf8",
     });
+    if (r.error) throw r.error;
     return { status: r.status, out: r.stdout, err: r.stderr };
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -72,6 +76,18 @@ function runHook(runtime, sheet, command = sessionStart[runtimes[runtime].hooks]
 }
 
 describe("SessionStart hook", () => {
+  test("all shipped commands invoke Node and need no executable bit on the script", () => {
+    for (const runtime of ["claude", "codex", "copilot"]) {
+      const command = sessionStart[runtime].hooks[0].command;
+      const root = runtime === "copilot" ? "COPILOT_PLUGIN_ROOT" : "CLAUDE_PLUGIN_ROOT";
+      expect(command).toBe(`node "\${${root}}/hooks/session-start.mjs" ${runtime}`);
+      const hooks = JSON.stringify({ hooks: { SessionStart: [sessionStart[runtime]] } });
+      const statOf = (rel) => rel === "hooks/session-start.mjs" ? { mode: 0o644 } : null;
+      expect(() => validateHooks(hooks, { statOf, root })).not.toThrow();
+      expect(() => validateHooks(hooks, { statOf: () => null, root })).toThrow("hooks/session-start.mjs does not exist");
+    }
+  });
+
   // The manifest names Codex's own hooks file instead of relying on Codex's
   // default discovery; `resume` keeps the mandate present after a restart.
   test("declares the hook in the Codex manifest", () => {
@@ -90,10 +106,10 @@ describe("SessionStart hook", () => {
 
   for (const arg of ["cursor", ""]) {
     test(`fails on runtime argument ${JSON.stringify(arg)}`, () => {
-      const r = runHook("claude", null, `"\${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh" ${arg}`);
+      const r = runHook("claude", null, `node "\${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs" ${arg}`);
       expect(r.status).not.toBe(0);
       expect(r.out).toBe("");
-      expect(r.err.trimEnd().split("\n")).toEqual([`session-start.sh: unknown runtime '${arg}' (expected claude, codex, or copilot)`]);
+      expect(r.err.trimEnd().split("\n")).toEqual([`session-start.mjs: unknown runtime '${arg}' (expected claude, codex, or copilot)`]);
     });
   }
 
@@ -158,7 +174,7 @@ function copilotContext(sheet) {
 describe("Copilot SessionStart context", () => {
   test("the Copilot manifest names its own hooks file", () => {
     expect(copilotManifest.hooks).toBe("hooks/copilot-hooks.json");
-    expect(sessionStart.copilot.hooks[0].command).toBe('"${COPILOT_PLUGIN_ROOT}/hooks/session-start.sh" copilot');
+    expect(sessionStart.copilot.hooks[0].command).toBe('node "${COPILOT_PLUGIN_ROOT}/hooks/session-start.mjs" copilot');
   });
 
   test("a valid sheet adds every role line, in models.json order, and no setup note", () => {
@@ -208,10 +224,12 @@ describe("Copilot SessionStart context", () => {
     try {
       cpSync(join(pluginRoot, "hooks"), join(root, "hooks"), { recursive: true });
       cpSync(join(pluginRoot, "skills/setup-pstack/scripts"), join(root, "skills/setup-pstack/scripts"), { recursive: true });
+      cpSync(join(pluginRoot, "models.json"), join(root, "models.json"));
       const odd = 'a "quote", a back\\slash, and a\ttab';
       writeFileSync(join(root, "hooks/session-start-copilot-setup.md"), `${odd}\n`);
-      const r = spawnSync("sh", ["-c", sessionStart.copilot.hooks[0].command], {
-        env: { PATH: process.env.PATH, HOME: root, COPILOT_PLUGIN_ROOT: root },
+      const r = spawnSync(sessionStart.copilot.hooks[0].command.replaceAll("${COPILOT_PLUGIN_ROOT}", root), {
+        shell: true,
+        env: { PATH: process.env.PATH, HOME: root, USERPROFILE: root, COPILOT_PLUGIN_ROOT: root },
         encoding: "utf8",
       });
       expect(JSON.parse(r.stdout).additionalContext).toContain(`\n\n${odd}\n${close}`);
@@ -248,8 +266,9 @@ describe("Copilot SessionStart context", () => {
     const home = mkdtempSync(join(tmpdir(), "pstack-hook-"));
     try {
       const run = (runtime) =>
-        spawnSync("sh", ["-c", sessionStart[runtime].hooks[0].command], {
-          env: { PATH: process.env.PATH, HOME: home, CLAUDE_PLUGIN_ROOT: pluginRoot, COPILOT_PLUGIN_ROOT: pluginRoot },
+        spawnSync(sessionStart[runtime].hooks[0].command.replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot).replaceAll("${COPILOT_PLUGIN_ROOT}", pluginRoot), {
+          shell: true,
+          env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, CLAUDE_PLUGIN_ROOT: pluginRoot, COPILOT_PLUGIN_ROOT: pluginRoot },
           encoding: "utf8",
         }).stdout;
       for (const dir of [".claude", ".codex"]) {

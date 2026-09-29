@@ -245,7 +245,9 @@ describe("PreToolUse model check for pstack agents", () => {
     });
     const checked = invoke("skills/setup-pstack/scripts/check-sheet.sh");
     expect({ status: checked.status, out: checked.stdout, err: checked.stderr }).toEqual({ status: 0, out: "sheet ok\n", err: "" });
-    const started = invoke("hooks/session-start.sh", ["copilot"]);
+    const started = spawnSync("node", [join(pluginRoot, "hooks/session-start.mjs"), "copilot"], {
+      env: { PATH: process.env.PATH, ...env }, encoding: "utf8",
+    });
     expect(started.status).toBe(0);
     expect(JSON.parse(started.stdout).additionalContext).toContain("bug-fix: claude-opus-5.5");
     expect(deny(run(agent("off-sheet-model"), env).out)).toContain("`off-sheet-model`");
@@ -273,16 +275,15 @@ describe("PreToolUse model check for pstack agents", () => {
 describe("PreToolUse vendored script runs", () => {
   const root = pluginRoot.replace(/\/$/, "");
   const find = `${root}/skills/reflect/scripts/find-transcript.mjs`;
-  const log = `${root}/skills/show-me-your-work/scripts/log.sh`;
+  const log = `${root}/skills/show-me-your-work/scripts/log.mjs`;
   const bash = (command, cwd = workspace) => JSON.stringify({ tool_name: "Bash", cwd, tool_input: { command, description: "run" } });
 
   const allowed = {
     "a transcript search": `node ${find} ${workspace} prompt`,
     "a transcript search with explicit workspace": `node ${find} ${workspace} prompt ${workspace}`,
     "a single-quoted prompt": `node ${find} ${workspace} 'fix the billing bug'`,
-    "a log with prose resembling an outside path": `bash ${log} log.tsv review /outside/private.txt why evidence result`,
-    "surrounding spaces": `  bash ${log} log.tsv review decision why evidence result  `,
-    "direct execution": `${log} log.tsv review decision why evidence result`,
+    "a log with prose resembling an outside path": `node ${log} log.tsv review /outside/private.txt why evidence result`,
+    "surrounding spaces": `  node ${log} log.tsv review decision why evidence result  `,
     "a project flag with an absolute value": `node ${root}/skills/poteto-mode/scripts/resume.mjs begin --project=${workspace}`,
     "a project flag with a relative value": `node ${root}/skills/poteto-mode/scripts/resume.mjs begin --project=.`,
     "resume defaults": `node ${root}/skills/poteto-mode/scripts/resume.mjs read`,
@@ -314,7 +315,8 @@ describe("PreToolUse vendored script runs", () => {
     "an unregistered script": `node ${root}/skills/example/scripts/new.mjs`,
     "a wrong interpreter for a registered script": `sh ${find} ${workspace} prompt`,
     "an incomplete transcript command": `node ${find} ${workspace}`,
-    "an incomplete log command": `bash ${log} log.tsv review`,
+    "an incomplete log command": `node ${log} log.tsv review`,
+    "direct log execution": `${log} log.tsv review decision why evidence result`,
     "an unknown resume option": `node ${root}/skills/poteto-mode/scripts/resume.mjs begin --new-option=path`,
     "a missing resume option value": `node ${root}/skills/poteto-mode/scripts/resume.mjs begin --project`,
     "a read with publication arguments": `node ${root}/skills/poteto-mode/scripts/resume.mjs read --note note.md`,
@@ -345,19 +347,19 @@ describe("PreToolUse vendored script runs", () => {
     "a quoted newline": `node ${find} ${workspace} prompt 'a\nb'`,
     "a quoted tab": `node ${find} ${workspace} prompt 'a\tb'`,
     "a tilde": `node ${find} ${workspace} prompt ~/x`,
-    "a .. script path": `node ${root}/skills/reflect/scripts/../../../hooks/session-start.sh`,
+    "a .. script path": `node ${root}/skills/reflect/scripts/../../../hooks/session-start.mjs`,
     "a .. argument": `node ${find} ${workspace} prompt ../../etc/passwd`,
     "a quoted .. argument": `node ${find} ${workspace} prompt '../x'`,
     "a relative flag that climbs into a sibling": `node ${root}/skills/poteto-mode/scripts/resume.mjs begin --project=../outside`,
     "a relative flag naming the parent": `node ${root}/skills/poteto-mode/scripts/resume.mjs begin --project=..`,
-    "an absolute argument outside the workspace": `bash ${log} /etc/profile review decision why evidence result`,
+    "an absolute argument outside the workspace": `node ${log} /etc/profile review decision why evidence result`,
     // A path operand in the plugin could rewrite the context every session loads.
-    "a log appended to the plugin's session context": `bash ${log} ${root}/hooks/session-start-copilot.md review decision why evidence result`,
+    "a log appended to the plugin's session context": `node ${log} ${root}/hooks/session-start-copilot.md review decision why evidence result`,
     "a path in the plugin": `node ${root}/skills/poteto-mode/scripts/check-plan.mjs ${root}/skills/reflect/SKILL.md`,
     "a flag holding an outside path": `node ${root}/skills/poteto-mode/scripts/resume.mjs begin --project=/etc/x`,
     "a sibling prefix": `node ${root}-evil/skills/reflect/scripts/find-transcript.mjs`,
     "a script outside scripts/": `node ${root}/skills/reflect/SKILL.md`,
-    "a hook script": `sh ${root}/hooks/session-start.sh`,
+    "a hook script": `node ${root}/hooks/session-start.mjs`,
     "the scripts directory itself": `node ${root}/skills/reflect/scripts/`,
     "a relative script path": "node skills/reflect/scripts/find-transcript.mjs",
     "another interpreter": `python3 ${find}`,
@@ -375,10 +377,10 @@ describe("PreToolUse vendored script runs", () => {
     const link = join(home, "linked-work");
     symlinkSync(workspace, link);
     try {
-      expect(run(bash(`bash ${log} ${link}/decisions.md review decision why evidence result`, realpathSync(workspace)), env).out).toBe(allow);
-      expect(run(bash(`bash ${log} ${link}/new/dir/decisions.md review decision why evidence result`, realpathSync(workspace)), env).out).toBe(allow);
-      expect(run(bash(`bash ${log} ${join(home, "elsewhere.md")} review decision why evidence result`, realpathSync(workspace)), env)).toEqual(quiet);
-      expect(run(bash(`bash ${log} '${link}/x y.md' review decision why evidence result`, realpathSync(workspace)), env).out).toBe(allow);
+      expect(run(bash(`node ${log} ${link}/decisions.md review decision why evidence result`, realpathSync(workspace)), env).out).toBe(allow);
+      expect(run(bash(`node ${log} ${link}/new/dir/decisions.md review decision why evidence result`, realpathSync(workspace)), env).out).toBe(allow);
+      expect(run(bash(`node ${log} ${join(home, "elsewhere.md")} review decision why evidence result`, realpathSync(workspace)), env)).toEqual(quiet);
+      expect(run(bash(`node ${log} '${link}/x y.md' review decision why evidence result`, realpathSync(workspace)), env).out).toBe(allow);
     } finally {
       rmSync(link);
     }
@@ -392,8 +394,8 @@ describe("PreToolUse vendored script runs", () => {
     mkdirSync(outside);
     symlinkSync(outside, link);
     try {
-      expect(run(bash(`bash ${log} ${link}/log.tsv review decision why evidence result`), env)).toEqual(quiet);
-      expect(run(bash(`bash ${log} linked-outside/log.tsv review decision why evidence result`), env)).toEqual(quiet);
+      expect(run(bash(`node ${log} ${link}/log.tsv review decision why evidence result`), env)).toEqual(quiet);
+      expect(run(bash(`node ${log} linked-outside/log.tsv review decision why evidence result`), env)).toEqual(quiet);
       expect(run(bash(`node ${root}/skills/poteto-mode/scripts/resume.mjs begin --project=linked-outside`), env)).toEqual(quiet);
     } finally {
       rmSync(link);
@@ -407,9 +409,9 @@ describe("PreToolUse vendored script runs", () => {
     writeFileSync(target, "existing log\n");
     symlinkSync(target, link);
     try {
-      expect(run(bash(`bash ${log} ${link} review decision why evidence result`), env)).toEqual(quiet);
+      expect(run(bash(`node ${log} ${link} review decision why evidence result`), env)).toEqual(quiet);
       rmSync(target);
-      expect(run(bash(`bash ${log} ${link} review decision why evidence result`), env)).toEqual(quiet);
+      expect(run(bash(`node ${log} ${link} review decision why evidence result`), env)).toEqual(quiet);
     } finally {
       rmSync(link);
       rmSync(target, { force: true });
@@ -422,7 +424,7 @@ describe("PreToolUse vendored script runs", () => {
   });
 
   test("stays silent when the workspace sits inside the plugin", () => {
-    expect(run(bash(`bash ${log} session-start-copilot.md review decision why evidence result`, join(root, "hooks")), env)).toEqual(quiet);
+    expect(run(bash(`node ${log} session-start-copilot.md review decision why evidence result`, join(root, "hooks")), env)).toEqual(quiet);
   });
 
   // setup-pstack runs its sheet check in this form after it writes the sheet.

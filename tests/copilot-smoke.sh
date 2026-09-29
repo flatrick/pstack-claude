@@ -327,10 +327,10 @@ sandboxed() {
 sandboxed "local install" "$repo/plugins/pstack"
 
 # A vendored script runs with no --allow-all-tools: the hook approves the
-# strict `bash <plugin>/skills/*/scripts/*` form, so no permission is requested.
+# strict `node <plugin>/skills/*/scripts/*` form, so no permission is requested.
 script_run() {
-  local label="$1" script="$2/skills/show-me-your-work/scripts/log.sh" trail="$work/decisions-$RANDOM.tsv" events
-  events="$(probe -p "Run exactly this one bash command and nothing else, then reply DONE: bash $script $trail smoke chose-table because evidence ok")"
+  local label="$1" script="$2/skills/show-me-your-work/scripts/log.mjs" trail="$work/decisions-$RANDOM.tsv" events
+  events="$(probe -p "Run exactly this one bash command and nothing else, then reply DONE: node $script $trail smoke chose-table because evidence ok")"
   if grep -q 'chose-table' "$trail" 2>/dev/null; then
     pass "$label: the vendored script ran and wrote its row"
   else

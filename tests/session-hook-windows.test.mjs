@@ -28,10 +28,10 @@ function runHook({ sheet, codexHome, homeSheet, context = mandate, host = "cmd" 
     const contextPath = join(plugin, "hooks/session-start-context.md");
     if (context === null) rmSync(contextPath);
     else writeFileSync(contextPath, context);
-    const command = handler.commandWindows.replaceAll("${CLAUDE_PLUGIN_ROOT}", plugin);
+    const command = handler.command.replaceAll("${CLAUDE_PLUGIN_ROOT}", plugin);
     const env = {
       SystemRoot: process.env.SystemRoot,
-      PATH: join(process.env.SystemRoot, "System32/WindowsPowerShell/v1.0"),
+      PATH: process.env.PATH,
       PATHEXT: process.env.PATHEXT,
       USERPROFILE: profile,
       HOME: join(fixture, "other home"),
