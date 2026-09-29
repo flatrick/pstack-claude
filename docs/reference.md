@@ -58,13 +58,22 @@ These checks cover skill discovery. Delegation and multi-model workflows remain 
 
 ### Automatic routing
 
-The Claude Code and Codex plugins share a [SessionStart hook](../plugins/pstack/hooks/session-start.sh) that loads a short [routing instruction](../plugins/pstack/hooks/session-start-context.md) on startup, resume, clear, and compact. Codex requires the user to trust plugin hooks through `/hooks`. The instruction invokes `poteto-mode` when a task meets any of these conditions:
+The Claude Code and Codex plugins share a [SessionStart hook](../plugins/pstack/hooks/session-start.mjs) that loads a short [routing instruction](../plugins/pstack/hooks/session-start-context.md) on startup, resume, clear, and compact. Both invoke the hook with `node`, which must be on `PATH`. Codex requires the user to trust plugin hooks through `/hooks`. The instruction invokes `poteto-mode` when a task meets any of these conditions:
 
 - It touches more than one file or changes a signature other files call.
 - It involves a design or architecture choice.
 - It concerns a bug with an unknown cause or a performance issue.
 
 Smaller tasks proceed directly. The full skill loads when invoked, and explicit user instructions take precedence.
+
+The hook runs on Windows, macOS, and Linux without Bash. For a manual check from the repository root in PowerShell:
+
+```powershell
+$env:CLAUDE_PLUGIN_ROOT = (Resolve-Path ./plugins/pstack).Path
+node ./plugins/pstack/hooks/session-start.mjs codex
+```
+
+Use `claude` as the last argument to check the Claude Code configuration. The hook honors `CLAUDE_CONFIG_DIR` for Claude Code and `CODEX_HOME` for Codex. After updating from the shell hook, Codex may ask you to trust the changed hook command again through `/hooks`.
 
 To disable routing, run `setup-pstack` and turn off the session hook. In Claude Code, use `/pstack:setup-pstack`. You can also write `session hook: off` in the runtime's sheet, at the path in [setup-pstack's runtime table](../plugins/pstack/skills/setup-pstack/SKILL.md#other-runtimes). The hook reads that setting before injecting its instruction. Without the setting, routing stays on.
 

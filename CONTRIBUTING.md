@@ -57,7 +57,15 @@ When adding a skill, include `name` and `description` in its frontmatter. Public
 
 Change model defaults in `models.json`, never in a skill body. A role names a tier from `tiers` (`default`, `strongest`, or `panel`), so moving a tier is one edit, and the `codex` block gives the Codex example for each tier. The generator checks the configuration's structure as it loads it (`parseModels` in `tools/generate.mjs`) and fails naming the offending role, tier, or slug. `tests/models.test.mjs` proves each malformed shape is rejected and checks that skills name every role they use. A full `claude-*` ID or a backticked available name such as `` `fable` `` outside a generated region fails the generator with its file and line.
 
-`bun test tests/` covers the generator, the sync tool, the link validator, and `tests/invariants.test.mjs`, which builds fixture trees that must trip each layout invariant. One check is behavioral and lives in `tests/skill-collision-repro.sh`: it needs the `claude` CLI and API access and makes one haiku call to prove a user-typed `/plugin:name` reaches a skill with no `commands/` present. CI cannot run it, so run it locally at least once before a release.
+`bun test tests/` covers the generator, the sync tool, the link validator, and `tests/invariants.test.mjs`, which builds fixture trees that must trip each layout invariant. One check is behavioral and lives in `tests/skill-collision-repro.mjs`: it needs the `claude` CLI and API access and makes one haiku call to prove a user-typed `/plugin:name` reaches a skill with no `commands/` present. CI cannot run it, so run it locally at least once before a release.
+
+On Windows, macOS, or Linux, run it from the repository root:
+
+```shell
+node tests/skill-collision-repro.mjs
+```
+
+This check requires the native `claude` executable on `PATH` and API access. To test the Node helpers without API calls, run `bun test tests/node-scripts.test.mjs tests/session-hook.test.mjs tests/log.test.mjs`. These tests launch the logging and session-hook scripts with `node` and use a stub runner for the Claude check. CI runs these tests on Windows as well as in the full Linux suite.
 
 If you touched `skills/poteto-mode/scripts/`:
 
@@ -93,7 +101,7 @@ uvx zizmor@1.29.0 --persona pedantic --min-severity low --collect all -- .
 - **An unresolved sync conflict.** `bun tools/generate.mjs` fails on any line under `plugins/pstack` that starts with seven `<`, `=`, or `>` followed by a space or the line end, and names the file and line. A sync writes these markers for every text conflict.
 - **A missing or escaping local Markdown link.** `tools/validate-skills.mjs` resolves bare, `./`, `../`, and reference-style targets against their Markdown file. Every local target must exist inside `plugins/pstack/skills`.
 - **Prose naming a plugin file the install does not carry.** The same tool resolves every backticked relative path against its Markdown file and against the plugin root. A token that lands on a real file or directory outside `plugins/pstack/skills` (`agents/comment-sicko.md`, `../../hooks/hooks.json`) fails. Tokens that resolve to nothing (placeholders, slash commands, `plugins/pstack/models.json` maintainer notes) pass. A Markdown link is caught by the link check; this covers the backticked form that is not a link.
-- **A shell script that fails shellcheck.** Every `.sh` file outside `node_modules` is linted at warning severity.
+- **A Node helper that fails on Windows.** The Windows CI job tests the logging helper, the shipped hook commands, and the manual check with a stub Claude runner.
 - **An action pinned to a tag.** Use the full 40-character commit SHA with a version comment. A mutable tag can be force-pushed into our runners.
 - **A workflow file that fails `actionlint`.** Invalid YAML, a malformed expression, an unknown runner label, or a `needs:` pointing at a job that does not exist. Run `actionlint` from the repository root.
 - **A Markdown correctness error.** Reversed link syntax, an empty link target, a missing image alt, a fragment link to a heading that is not there, or an undefined or unused reference definition. The rule set is deliberately correctness-only and lives in `.markdownlint-cli2.jsonc`. Run `npx --yes markdownlint-cli2@0.18.1 '**/*.md'`.
